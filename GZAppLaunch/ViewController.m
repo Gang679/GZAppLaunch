@@ -9,7 +9,7 @@
 #import "ViewController.h"
 #import "MBProgressHUD.h"
 
-@interface ViewController ()<UITableViewDelegate,UITableViewDataSource>
+@interface ViewController ()<UITableViewDelegate,UITableViewDataSource,UIActionSheetDelegate>
 
 @property (nonatomic , strong)UITableView *ScrollViews ;
 
@@ -19,6 +19,12 @@
 @property (assign,nonatomic) int count;
 
 @property (strong,nonatomic) NSArray *dataArray;
+
+@property (strong,nonatomic) UIImageView *img ;
+
+@property (strong, nonatomic)NSTimer *timer; //图片长按识别
+@property (strong, nonatomic)NSString *scannedResult;  //扫描出来的结果
+
 @end
 
 @implementation ViewController
@@ -42,7 +48,18 @@
     //测试数据----->将需要展示的数据进行拼接,比如需要展示的数据数组为 @[@"1",@"2",@"3",@"4",@"5"] 那么需要拼接新数组 为 @[@"1",@"2",@"3",@"4",@"5",@"1",@"2",@"3",@"4",@"5"],示例如下
     self.dataArray = [NSArray arrayWithObjects:@"1",@"2",@"3",@"4",@"5",@"1",@"2",@"3",@"4",@"5", nil];
     [self.ScrollViews setContentOffset:CGPointMake(0, 0) animated:YES];
-    //self.ScrollViews.userInteractionEnabled = NO;
+    
+    _img = [[UIImageView alloc]initWithFrame:CGRectMake(50, 0, self.view.bounds.size.width -100, 200)];
+    _img.contentMode = UIViewContentModeScaleAspectFit;
+    _img.image = [UIImage imageNamed:@"WechatIMG19"];
+    _img.userInteractionEnabled = YES;
+    
+    //长按设置
+    UILongPressGestureRecognizer *longGes = [[UILongPressGestureRecognizer alloc]initWithTarget:self action:@selector(dealLongPress:)];
+    longGes.numberOfTouchesRequired = 1;
+    [_img addGestureRecognizer:longGes];
+    [self.view addSubview:_img];
+
 }
 
 //CADisplayLink 定时器 系统默认每秒调用60次
@@ -96,6 +113,77 @@
     [hud hide: YES afterDelay: 1];
 }
 
+#pragma mark->长按识别二维码
+
+-(void)dealLongPress:(UIGestureRecognizer*)gesture{
+    
+    if(gesture.state==UIGestureRecognizerStateBegan){
+        /**
+         *  fireDate:NSTimer的方法
+         */
+        _timer.fireDate=[NSDate distantFuture];
+        UIImageView  *tempImageView=(UIImageView*)gesture.view;
+        if(tempImageView.image){
+            //1.初始化扫描仪，设置设别类型和识别质量
+            CIDetector  *detector = [CIDetector detectorOfType:CIDetectorTypeQRCode context:nil options:@{CIDetectorAccuracy:CIDetectorAccuracyHigh}];
+            //2.扫描获取的特征组
+            NSArray*features = [detector featuresInImage:[CIImage imageWithCGImage:tempImageView.image.CGImage]];
+            if(features.count>0) {
+                CIQRCodeFeature *feature = [features objectAtIndex:0];
+                NSString *scannedResult = feature.messageString;
+                NSLog(@"扫描结果------%@",scannedResult);
+                UIActionSheet *ac = [[UIActionSheet alloc]initWithTitle:nil delegate:self cancelButtonTitle:@"取消"destructiveButtonTitle:nil otherButtonTitles:@"发送给朋友",@"保存图片",@"识别图中二维码",nil];
+                ac.tag = 1110 ;
+                [ac showInView:self.view];
+            }else{
+                UIActionSheet *ac = [[UIActionSheet alloc]initWithTitle:nil delegate:self cancelButtonTitle:@"取消"destructiveButtonTitle:nil otherButtonTitles:@"发送给朋友",@"保存图片",nil];
+                ac.tag = 1111 ;
+                [ac showInView:self.view];
+            }
+        }else{
+            UIAlertView* alertView = [[UIAlertView alloc]initWithTitle:@"扫描结果"message:@"您还没有生成二维码"delegate:nil cancelButtonTitle:@"确定"otherButtonTitles:nil,nil];
+            [alertView show];
+        }
+    }else if(gesture.state==UIGestureRecognizerStateEnded){
+        _timer.fireDate=[NSDate distantPast];
+    }
+}
+
+
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex NS_DEPRECATED_IOS(2_0, 8_3) __TVOS_PROHIBITED{
+    
+    if(buttonIndex == 1){
+        //保存图片到沙盒中
+        /*
+        //拿到图片
+        UIImage *image = [UIImage imageNamed:@"WechatIMG19.png"]; NSString *path_sandox = NSHomeDirectory();
+        NSLog(@"%@",path_sandox);
+        //设置一个图片的存储路径
+        NSString *imagePath = [path_sandox stringByAppendingString:@"/Documents/flower.png"];
+        //把图片直接保存到指定的路径（同时应该把图片的路径imagePath存起来，下次就可以直接用来取）
+        [UIImagePNGRepresentation(image) writeToFile:imagePath atomically:YES];
+         */
+        
+        UIImageWriteToSavedPhotosAlbum(self.img.image, self, @selector(image:didFinishSavingWithError:contextInfo:), nil);
+        
+    }
+}
+
+// 指定回调方法(看是否保存到手机相册)
+- (void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo{
+    
+    if (error == nil) {
+        
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"提示" message:@"已存入手机相册" delegate:self cancelButtonTitle:nil otherButtonTitles:@"确定", nil];
+        [alert show];
+        
+    }else{
+        
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"提示" message:@"保存失败" delegate:self cancelButtonTitle:nil otherButtonTitles:@"确定", nil];
+        [alert show];
+    }
+    
+}
 - (void)dealloc {
     
     [self.displayLink invalidate];
@@ -104,7 +192,7 @@
 }
 -(UITableView *)ScrollViews{
     if (!_ScrollViews) {
-        _ScrollViews = [[UITableView alloc]initWithFrame:CGRectMake(50, 100, self.view.bounds.size.width - 100, 150)];
+        _ScrollViews = [[UITableView alloc]initWithFrame:CGRectMake(50, 220, self.view.bounds.size.width - 100, 150)];
         [self.view addSubview:_ScrollViews];
         _ScrollViews.delegate = self ;
         _ScrollViews.dataSource = self ;
